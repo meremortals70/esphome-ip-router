@@ -5,6 +5,7 @@ forwarding and NAPT between two network interfaces and installs static inbound
 port maps.
 
 **Status: written, not tested. No hardware validation has been performed.**
+**Note config validation passes on 2026.7.3 and the C++ remains unbuilt.**
 
 See the [proposal to the ESPHome team](docs/esphome-ip-router-proposal.md) for the rationale
 and the open question about `use_address`.
