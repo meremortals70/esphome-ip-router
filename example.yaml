@@ -10,7 +10,7 @@ esp32:
     type: esp-idf
 
 external_components:
-  - source: github://YOURUSER/esphome-ip-router
+  - source: github://meremortals/esphome-ip-router
     components: [ip_router]
 
 logger:
