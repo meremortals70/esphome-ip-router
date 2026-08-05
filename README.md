@@ -125,4 +125,4 @@ Apache 2.0, matching ESPHome.
 
 ## Credits
 
-Written together with Claude (Anthropic), to a design and specification by Jason Wienert.
+Co-Authored with Claude (Anthropic), to a design and specification by Jason Wienert.
