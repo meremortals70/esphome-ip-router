@@ -31,7 +31,7 @@ second MCU's API on `192.168.1.50:6054`.
 
 ```yaml
 external_components:
-  - source: github://YOURUSER/esphome-ip-router
+  - source: github://meremortals70/esphome-ip-router
     components: [ip_router]
 
 ip_router:
