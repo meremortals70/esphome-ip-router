@@ -6,6 +6,9 @@ port maps.
 
 **Status: written, not tested. No hardware validation has been performed.**
 
+See the [proposal to the ESPHome team](docs/esphome-ip-router-proposal.md) for the rationale
+and the open question about `use_address`.
+
 ## Why
 
 ESPHome devices with two MCUs normally need two IP addresses, because the
