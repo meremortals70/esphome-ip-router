@@ -1,85 +1,124 @@
-# AI Autonomy Steward
+# esphome-ip-router
 
-A Home Assistant App that continuously reasons about your home's current
-state, proposes actions for one-time approval, then acts autonomously -
-bounded by an append-only constraint layer that only ever grows stricter.
+An ESPHome external component that turns an ESP32 into an IPv4 router: it enables
+forwarding and NAPT between two network interfaces and installs static inbound
+port maps.
 
-Part of the Abode AI Autonomy system. In its four-layer architecture:
-System 0 is perception (Home Assistant's sensors, and later Frigate/Tara),
-System 1 is fast deterministic automations, **System 2 is this App**, and a
-separate, independent constraint layer gates everything it proposes before
-execution.
+**Status: written, not tested. No hardware validation has been performed.**
 
-## Two components, install both
+## Why
 
-- **`ai_autonomy_steward`** - the App itself (Supervisor-managed container,
-  independent of HA Core's own restart cycle).
-- **`custom_components/ai_autonomy_steward_config`** - a companion
-  integration that runs inside HA Core, purely to provide real
-  entity/service selectors for `notify_service` and the AI Task entity.
-  The App's own options schema has no entity type, so this is the only way
-  those two fields can be validated against your actual HA data instead of
-  typed as free text.
+ESPHome devices with two MCUs normally need two IP addresses, because the
+ESPHome native API is a *server* on the device — Home Assistant connects
+inward. NAT alone hides the device. Static port mapping (PAT) does not: one
+address is advertised, and each MCU's API is reachable on its own port behind it.
 
-## What it does
+```
+                  ┌──────────────────────────────────────┐
+   LAN ───────────┤ upstream netif    (DHCP, 192.168.1.x) │
+                  │                                       │
+                  │            ip_router                  │
+                  │      forwarding + NAPT + portmap      │
+                  │                                       │
+                  │ downstream netif  (static, 10.99.0.1) ├─── second MCU
+                  └──────────────────────────────────────┘         10.99.0.2
+```
 
-It subscribes to Home Assistant's event stream and actively waits - it is
-never on a timer, never polling. When anything changes, it wakes, pulls
-the **complete current state fresh** (not a diff, the whole picture, every
-time), and reasons about whether anything is worth doing. A burst of
-several changes at once coalesces into a single reasoning pass rather than
-firing one per event, but the wake condition is always "something
-changed," never "time has passed."
-
-- **New kind of action:** proposed to you via mobile notification
-  (Approve / Deny / Never). It does not act until approved.
-- **Already-approved kind of action:** still decides fresh, every pass,
-  whether this specific moment actually calls for it.
-- **A better way to do something already approved:** it can propose
-  retiring or replacing an approved action, subject to the same approval
-  step.
-
-## The constraint layer
-
-Independent of the reasoning above. Every proposed action - including
-already-approved ones - is checked against `constraints.yaml` before it's
-allowed to execute. Tapping **Never** on any proposal permanently appends
-a new rule. Nothing in the running system can remove a constraint once
-added; the file only ever grows stricter. Constraints are only ever
-removed by editing `constraints.yaml` directly, outside the running app.
-
-## Installation
-
-1. Install the companion integration: copy
-   `custom_components/ai_autonomy_steward_config` into your HA `config/
-   custom_components/` folder (or via HACS custom repository), restart HA,
-   then Settings → Devices & Services → Add Integration → search
-   "AI Autonomy Steward Config" → select your real `notify.*` service and
-   your real `ai_task.*` entity.
-2. Install the App: Settings → Add-ons → Add-on Store → ⋮ → Repositories
-   → add this repo's URL → find **AI Autonomy Steward** → Install.
-3. Configuration tab → confirm `min_confidence` (default 0.70) - this is
-   the only App-level option now.
-4. Start the app, check the Log tab for "Authenticated against Home
-   Assistant Core" and "AI Autonomy Steward started, actively waiting for
-   changes."
+Home Assistant reaches the router's own API on `192.168.1.50:6053` and the
+second MCU's API on `192.168.1.50:6054`.
 
 ## Configuration
 
-| Field | Where it's set | Description |
+```yaml
+external_components:
+  - source: github://YOURUSER/esphome-ip-router
+    components: [ip_router]
+
+ip_router:
+  upstream: "ETH_DEF"
+  downstream: "ETH_SPI_0"
+  port_forward:
+    - protocol: tcp
+      external_port: 6054
+      target_address: 10.99.0.2
+      target_port: 6053
+```
+
+### Options
+
+| Option | Type | Notes |
 |---|---|---|
-| `notify_service` | Companion integration (entity selector) | Real `notify.*` service for approval prompts |
-| `ai_task_entity` | Companion integration (entity selector) | Real `ai_task.*` entity used for reasoning passes |
-| `min_confidence` | App options | Won't act or propose below this confidence (0-1) |
+| `upstream` | string, **required** | `esp_netif` ifkey of the LAN-facing interface. Its address is used as the external address for port maps. |
+| `downstream` | string, **required** | `esp_netif` ifkey of the private interface. NAPT is enabled here. |
+| `port_forward` | list, optional | Static inbound maps. |
+| `port_forward[].protocol` | `tcp` or `udp` | Defaults to `tcp`. |
+| `port_forward[].external_port` | port | Port on the upstream address. |
+| `port_forward[].target_address` | IPv4 | Host on the downstream segment. |
+| `port_forward[].target_port` | port | Port on the target host. |
 
-## Status
+### Interface keys
 
-Second build. First build wrongly used a fixed polling interval; corrected
-to genuine event-driven wake per the settled architecture. Unexercised in
-production either way. Frigate and Tara are not yet wired in as input
-sources - the code is structured so they can be added later without
-redesigning the reasoning loop.
+Interfaces are referenced by `esp_netif` ifkey, so the component does not care
+how they were created. Common keys are `ETH_DEF`, `WIFI_STA_DEF`,
+`WIFI_AP_DEF`. Additional interfaces created by other drivers use whatever key
+that driver registers. If the key is wrong, the log shows
+`interface '<key>' not found yet` and retries.
 
-## License
+## What it does not do
 
-MIT
+- **It does not create the second interface.** That is the job of the Ethernet
+  driver, a switch IC driver, or PPP. This component only routes between
+  interfaces that already exist.
+- **It does not fix mDNS.** The downstream device advertises a private address
+  that Home Assistant cannot route to. Set `use_address` on that device to the
+  upstream IP. Whether ESPHome's `use_address` accepts a non-default port is
+  unverified.
+- No dynamic rules, no UPnP, no firewalling.
+
+## Build configuration
+
+The component sets three ESP-IDF options automatically:
+
+- `CONFIG_LWIP_IP_FORWARD` — prerequisite for NAPT on the ESP platform
+- `CONFIG_LWIP_IPV4_NAPT`
+- `CONFIG_LWIP_IPV4_NAPT_PORTMAP` — required for inbound static maps
+
+No lwIP source patching is required. Older guides that patch `opt.h` by hand
+predate these Kconfig options.
+
+## Implementation notes
+
+**NAPT goes on the downstream interface.** ESP-IDF documents that NAPT is
+enabled on the interface connecting to the target network — their own example
+enables it on Ethernet to give Ethernet clients internet access via WiFi. This
+is the opposite of the usual mental model, where NAT sits on the outside edge.
+Getting it backwards fails silently.
+
+**NAPT can only be enabled on one interface at a time**, per ESP-IDF's
+documentation. That suits this use case and rules out multi-segment routing.
+
+**Work happens in `loop()`, not `setup()`**, because interfaces are usually not
+up when components are set up. The component retries every 2 s for up to 60
+attempts, then reports a component error.
+
+**`IP_PORTMAP_MAX` defaults to 32 entries** in lwIP.
+
+## Untested
+
+Everything. In particular:
+
+- Whether `esp_netif_napt_enable()` behaves correctly on ESP-IDF 6.x. Reports of
+  missing symbols, crashes in `ip_napt_deinit()`, and routing failures all date
+  from the 4.x era and may or may not still apply.
+- Throughput for a routed media stream.
+- `use_address` with a non-default port.
+- Behaviour with any specific second-interface driver.
+
+## Reference
+
+ESP-IDF's `network/vlan_support` example demonstrates NAPT between interfaces
+and is the closest working reference.
+
+## Licence
+
+Apache 2.0, matching ESPHome.
