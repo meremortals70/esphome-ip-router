@@ -7,7 +7,7 @@ private segment through a single advertised address.
 
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components.esp32 import add_idf_sdkconfig_option, only_on_esp32
+from esphome.components.esp32 import add_idf_sdkconfig_option
 from esphome.const import CONF_ID, CONF_PROTOCOL
 
 CODEOWNERS = ["@meremortals70"]
@@ -76,8 +76,7 @@ CONFIG_SCHEMA = cv.All(
     ).extend(cv.COMPONENT_SCHEMA),
     _validate_unique_external_ports,
     _validate_interfaces_differ,
-    only_on_esp32,
-    cv.only_with_esp_idf,
+    cv.only_on_esp32,
 )
 
 
