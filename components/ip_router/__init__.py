@@ -10,7 +10,7 @@ import esphome.config_validation as cv
 from esphome.components.esp32 import add_idf_sdkconfig_option, only_on_esp32
 from esphome.const import CONF_ID, CONF_PROTOCOL
 
-CODEOWNERS = ["@meremortals"]
+CODEOWNERS = ["meremortals70"]
 DEPENDENCIES = ["esp32"]
 
 CONF_UPSTREAM = "upstream"
