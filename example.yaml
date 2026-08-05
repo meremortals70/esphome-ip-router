@@ -1,0 +1,53 @@
+# Example: sensor MCU acts as router, audio MCU sits on the private segment.
+# One address is advertised to the LAN; both MCUs are reachable.
+
+esphome:
+  name: satellite-router
+
+esp32:
+  board: esp32-s31-function-coreboard-1
+  framework:
+    type: esp-idf
+
+external_components:
+  - source: github://YOURUSER/esphome-ip-router
+    components: [ip_router]
+
+logger:
+api:
+ota:
+  - platform: esphome
+
+# Upstream: LAN-facing interface, DHCP.
+ethernet:
+  type: YT8531
+  # ... PHY pin configuration for the board
+
+ip_router:
+  upstream: "ETH_DEF"
+  # Downstream ifkey depends on which driver creates the second interface.
+  downstream: "ETH_SPI_0"
+  port_forward:
+    # Audio MCU's ESPHome API.
+    - protocol: tcp
+      external_port: 6054
+      target_address: 10.99.0.2
+      target_port: 6053
+    # Audio MCU's OTA endpoint.
+    - protocol: tcp
+      external_port: 3233
+      target_address: 10.99.0.2
+      target_port: 3232
+
+# ---------------------------------------------------------------------------
+# On the audio MCU (separate config), tell Home Assistant where to find it:
+#
+#   esphome:
+#     name: satellite-audio
+#   api:
+#   # HA connects to the router's LAN address on the mapped port rather than
+#   # trusting mDNS, which would advertise the unroutable private address.
+#   #   use_address: 192.168.1.50:6054
+#
+# Whether use_address accepts a port suffix is UNVERIFIED.
+# ---------------------------------------------------------------------------
